@@ -2,6 +2,10 @@ services:
 
   limesurvey:
     image: ghcr.io/steffjenl/limesurvey:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: limesurvey
     ports:
       - 8082:80
     environment:

@@ -25,6 +25,12 @@ file_env() {
     unset "$fileVar"
 }
 
+safe_fs_op() {
+    if ! "$@" 2>/dev/null; then
+        echo >&2 "warning: filesystem operation failed: $*"
+    fi
+}
+
 if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
     file_env 'LIMESURVEY_DB_TYPE' 'mysql'
     file_env 'LIMESURVEY_DB_HOST' 'mysql'
@@ -68,24 +74,34 @@ if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
             exit 1
         fi
 
-        chmod ug+w -R application/config
+        if ! chmod ug+w -R application/config 2>/dev/null; then
+            echo >&2 "warning: unable to change permissions on application/config; continuing with existing host mount permissions"
+        fi
+
+        if [ ! -w application/config ]; then
+            echo >&2 "error: application/config is not writable for the container user"
+            echo >&2 "  fix host permissions for ./config (for example: chmod -R a+rwX ./config)"
+            exit 1
+        fi
 
         echo >&2 "Copying default container default config files into config volume..."
-        cp -dpRf /var/lime/application/config/* application/config
+        if ! cp -dRf /var/lime/application/config/* application/config; then
+            echo >&2 "warning: unable to copy some default config files (likely host mount permissions); continuing"
+        fi
 
         if ! [ -e plugins/index.html ]; then
             echo >&2 "No index.html file in plugins dir in $(pwd) Copying defaults..."
-            cp -dpRf /var/lime/plugins/* plugins
+            safe_fs_op cp -dRf /var/lime/plugins/* plugins
         fi
 
         if ! [ -e tmp/index.html ]; then
             echo >&2 "No index.html file in tmp dir in $(pwd) Copying defaults..."
-            cp -dpRf /var/lime/tmp/* tmp
+            safe_fs_op cp -dRf /var/lime/tmp/* tmp
         fi
 
         if ! [ -e upload/index.html ]; then
             echo >&2 "No index.html file upload dir in $(pwd) Copying defaults..."
-            cp -dpRf /var/lime/upload/* upload
+            safe_fs_op cp -dRf /var/lime/upload/* upload
         fi
 
         if ! [ -e application/config/config.php ]; then
@@ -217,17 +233,18 @@ EOPHP
 
         #Set timezone based on environment to config file if not already there
         grep -qF 'date_default_timezone_set' application/config/config.php || sed --in-place '/^}/a\$longName = exec("echo \\$TZ"); if (!empty($longName)) {date_default_timezone_set($longName);}' application/config/config.php
-        chmod ug-w -R application/config
-        chmod ug=rwx -R tmp
-        chmod ug=rwx -R upload
-        chown www-data:www-data -R tmp
-        chown www-data:www-data -R plugins
-        mkdir -p upload/surveys
-        chown www-data:www-data -R upload
-        chown www-data:www-data -R application/config
-        mkdir -p /var/lime/sessions
-        chown www-data:www-data -R /var/lime/sessions
-        chmod ug=rwx -R /var/lime/sessions
+        # Do not lock down write permissions on bind-mounted config directories.
+        # This caused persistent host-side permission issues across restarts.
+        safe_fs_op chmod ug=rwx -R tmp
+        safe_fs_op chmod ug=rwx -R upload
+        safe_fs_op chown www-data:www-data -R tmp
+        safe_fs_op chown www-data:www-data -R plugins
+        safe_fs_op mkdir -p upload/surveys
+        safe_fs_op chown www-data:www-data -R upload
+        safe_fs_op chown www-data:www-data -R application/config
+        safe_fs_op mkdir -p /var/lime/sessions
+        safe_fs_op chown www-data:www-data -R /var/lime/sessions
+        safe_fs_op chmod ug=rwx -R /var/lime/sessions
 
     fi
     
