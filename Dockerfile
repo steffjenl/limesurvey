@@ -81,7 +81,7 @@ RUN { \
 #Accept remote ip from local proxies where X-Forwarded-For set
 RUN { \
         echo 'ProxyPreserveHost On'; \
-        echo 'RemoteIPHeader X-Forwarded-For'; \
+        echo 'RemoteIPHeader X-Real-IP'; \
         echo 'RemoteIPInternalProxy 10.0.0.0/8 127.0.0.1'; \
         echo 'RemoteIPInternalProxy 172.23.0.0/16 127.0.0.1'; \
     } > /etc/apache2/conf-enabled/remoteip.conf
