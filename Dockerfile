@@ -1,4 +1,4 @@
-FROM php:8.4-apache
+FROM php:8.3-apache
 
 ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-master/limesurvey7.0.5+260623.zip
 ENV DOWNLOAD_SHA256=c956c06c0e4a29b4bfb20eb18a1bb79374298725bfd927f78b8a40a3bddd6b9d
@@ -24,6 +24,8 @@ RUN apt-get update && apt-get install -y unzip libc-client-dev libfreetype6-dev 
 RUN a2enmod rewrite
 
 RUN a2enmod remoteip
+
+RUN a2enmod proxy
 
 # set recommended PHP.ini settings
 # see https://secure.php.net/manual/en/opcache.installation.php
