@@ -89,10 +89,12 @@ RUN { \
 #Accept remote ip from local proxies where X-Forwarded-For set
 RUN { \
     echo 'SetEnvIfNoCase Authorization "^(.*)$" HTTP_AUTHORIZATION=$1'; \
+    echo 'SetEnvIfNoCase X-Forwarded-Authorization "^(.*)$" HTTP_X_FORWARDED_AUTHORIZATION=$1'; \
     echo 'RewriteEngine On'; \
     echo 'RewriteCond %{HTTP:Authorization} ^(.*)$'; \
     echo 'RewriteRule ^ - [E=HTTP_AUTHORIZATION:%1]'; \
     echo 'RequestHeader set Authorization "%{HTTP_AUTHORIZATION}e" env=HTTP_AUTHORIZATION'; \
+    echo 'RequestHeader setifempty Authorization "%{HTTP_X_FORWARDED_AUTHORIZATION}e" env=HTTP_X_FORWARDED_AUTHORIZATION'; \
         echo 'ProxyPreserveHost On'; \
         echo 'RemoteIPHeader X-Real-IP'; \
         echo 'RemoteIPInternalProxy 10.0.0.0/8 127.0.0.1'; \
