@@ -32,6 +32,7 @@ RUN a2enmod headers
 RUN { \
         echo '<Directory /var/www/html>'; \
         echo '    AllowOverride All'; \
+        echo '    Require all granted'; \
         echo '</Directory>'; \
     } > /etc/apache2/conf-enabled/allowoverride.conf
 
