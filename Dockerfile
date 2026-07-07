@@ -27,6 +27,12 @@ RUN a2enmod remoteip
 
 RUN a2enmod proxy
 
+RUN { \
+        echo '<Directory /var/www/html>'; \
+        echo '    AllowOverride All'; \
+        echo '</Directory>'; \
+    } > /etc/apache2/conf-enabled/allowoverride.conf
+
 # set recommended PHP.ini settings
 # see https://secure.php.net/manual/en/opcache.installation.php
 RUN { \
@@ -80,6 +86,7 @@ RUN { \
 
 #Accept remote ip from local proxies where X-Forwarded-For set
 RUN { \
+        echo 'SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1'; \
         echo 'ProxyPreserveHost On'; \
         echo 'RemoteIPHeader X-Real-IP'; \
         echo 'RemoteIPInternalProxy 10.0.0.0/8 127.0.0.1'; \
