@@ -1,4 +1,4 @@
-FROM php:8.3-apache
+FROM php:8.5-apache
 
 ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-master/limesurvey7.0.5+260623.zip
 ENV DOWNLOAD_SHA256=c956c06c0e4a29b4bfb20eb18a1bb79374298725bfd927f78b8a40a3bddd6b9d
