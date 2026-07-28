@@ -1,7 +1,7 @@
 FROM php:8.3-apache
 
-ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-master/limesurvey7.0.5+260623.zip
-ENV DOWNLOAD_SHA256=c956c06c0e4a29b4bfb20eb18a1bb79374298725bfd927f78b8a40a3bddd6b9d
+ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-master/limesurvey7.0.7+260729.zip
+ENV DOWNLOAD_SHA256=870557e842b9636d63c18d715e3f990c28123953e7d8475cfadd8bb203a18bc3
 
 #Need sury repo for libc-client-dev
 RUN curl -sSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb \
@@ -31,6 +31,7 @@ RUN a2enmod headers
 
 RUN { \
         echo '<Directory /var/www/html>'; \
+        echo '    Options Indexes FollowSymLinks'; \
         echo '    AllowOverride All'; \
         echo '    Require all granted'; \
         echo '</Directory>'; \
@@ -84,22 +85,18 @@ RUN { \
         echo 'date.timezone=UTC'; \
         echo 'session.gc_maxlifetime=86400'; \
         echo 'session.save_path="/var/lime/sessions"'; \
+        echo 'log_errors = On'; \
+        echo 'error_log = /dev/stderr'; \
     } > /usr/local/etc/php/conf.d/limesurvey.ini
 
 
 #Accept remote ip from local proxies where X-Forwarded-For set
 RUN { \
-    echo 'SetEnvIfNoCase Authorization "^(.*)$" HTTP_AUTHORIZATION=$1'; \
-    echo 'SetEnvIfNoCase X-Forwarded-Authorization "^(.*)$" HTTP_X_FORWARDED_AUTHORIZATION=$1'; \
-    echo 'RewriteEngine On'; \
-    echo 'RewriteCond %{HTTP:Authorization} ^(.*)$'; \
-    echo 'RewriteRule ^ - [E=HTTP_AUTHORIZATION:%1]'; \
-    echo 'RequestHeader set Authorization "%{HTTP_AUTHORIZATION}e" env=HTTP_AUTHORIZATION'; \
-    echo 'RequestHeader setifempty Authorization "%{HTTP_X_FORWARDED_AUTHORIZATION}e" env=HTTP_X_FORWARDED_AUTHORIZATION'; \
         echo 'ProxyPreserveHost On'; \
         echo 'RemoteIPHeader X-Real-IP'; \
-        echo 'RemoteIPInternalProxy 10.0.0.0/8 127.0.0.1'; \
-        echo 'RemoteIPInternalProxy 172.23.0.0/16 127.0.0.1'; \
+        echo 'RemoteIPTrustedProxy 10.0.0.0/8'; \
+        echo 'RemoteIPTrustedProxy 172.16.0.0/12'; \
+        echo 'RemoteIPTrustedProxy 192.168.0.0/16'; \
     } > /etc/apache2/conf-enabled/remoteip.conf
 
 VOLUME ["/var/www/html/plugins"]
@@ -108,6 +105,9 @@ VOLUME ["/var/lime/sessions"]
 
 #ensure that the config is persisted especially for security.php
 VOLUME ["/var/www/html/application/config"]
+
+# temp patch for npm
+RUN perl -0pi -e 's/\$headers = getAllHeaders\(\);\n        \$headers = array_change_key_case\(\$headers, CASE_LOWER\);\n\n        \$authorization = \$headers\[\x27authorization\x27\] \?\? null;\n        if \(!\$authorization\) \{\n            \$authorization = \$_SERVER\[\x27HTTP_AUTHORIZATION\x27\]\n                \?\? \$_SERVER\[\x27REDIRECT_HTTP_AUTHORIZATION\x27\]\n                \?\? null;\n        \}\n\n        if \(\n            !is_string\(\$authorization\)\n            \|\| stripos\(\$authorization\)\x20!==\x200\n        \) \{\n            return null;\n        \}\n\n        return substr\(\$authorization, 7\);/\$headers = array_change_key_case(getallheaders() ?: [], CASE_LOWER);\n\n        \$authorization = \$headers[\x27authorization\x27]\n            ?? \$_SERVER[\x27HTTP_AUTHORIZATION\x27]\n            ?? \$_SERVER[\x27REDIRECT_HTTP_AUTHORIZATION\x27]\n            ?? null;\n\n        if (!is_string(\$authorization)) {\n            return null;\n        }\n\n        if (stripos(\$authorization, \x27Bearer \x27) !== 0) {\n            return null;\n        }\n\n        return substr(\$authorization, 7);/s' application/libraries/Api/Rest/Endpoint/EndpointFactory.php
 
 
 COPY docker-entrypoint.sh /usr/local/bin/
