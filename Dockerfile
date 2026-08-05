@@ -1,7 +1,7 @@
-FROM php:8.3-apache
+FROM php:8.4-apache
 
-ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-master/limesurvey7.0.7+260729.zip
-ENV DOWNLOAD_SHA256=870557e842b9636d63c18d715e3f990c28123953e7d8475cfadd8bb203a18bc3
+ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-master/limesurvey7.0.8+260806.zip
+ENV DOWNLOAD_SHA256=f2fae5347972b80e9be9c4d57473769e1d4ecb7a083138d940d15a06020ef271
 
 #Need sury repo for libc-client-dev
 RUN curl -sSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb \
@@ -107,8 +107,8 @@ VOLUME ["/var/lime/sessions"]
 VOLUME ["/var/www/html/application/config"]
 
 # temp patch for npm
-RUN perl -0pi -e 's/\$headers = getAllHeaders\(\);\n        \$headers = array_change_key_case\(\$headers, CASE_LOWER\);\n\n        \$authorization = \$headers\[\x27authorization\x27\] \?\? null;\n        if \(!\$authorization\) \{\n            \$authorization = \$_SERVER\[\x27HTTP_AUTHORIZATION\x27\]\n                \?\? \$_SERVER\[\x27REDIRECT_HTTP_AUTHORIZATION\x27\]\n                \?\? null;\n        \}\n\n        if \(\n            !is_string\(\$authorization\)\n            \|\| stripos\(\$authorization\)\x20!==\x200\n        \) \{\n            return null;\n        \}\n\n        return substr\(\$authorization, 7\);/\$headers = array_change_key_case(getallheaders() ?: [], CASE_LOWER);\n\n        \$authorization = \$headers[\x27authorization\x27]\n            ?? \$_SERVER[\x27HTTP_AUTHORIZATION\x27]\n            ?? \$_SERVER[\x27REDIRECT_HTTP_AUTHORIZATION\x27]\n            ?? null;\n\n        if (!is_string(\$authorization)) {\n            return null;\n        }\n\n        if (stripos(\$authorization, \x27Bearer \x27) !== 0) {\n            return null;\n        }\n\n        return substr(\$authorization, 7);/s' application/libraries/Api/Rest/Endpoint/EndpointFactory.php
-
+COPY fix-auth-header.patch /tmp/fix-auth-header.patch
+RUN patch -p1 < /tmp/fix-auth-header.patch
 
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \

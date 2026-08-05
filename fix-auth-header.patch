@@ -1,0 +1,34 @@
+--- a/application/libraries/Api/Rest/Endpoint/EndpointFactory.php
++++ b/application/libraries/Api/Rest/Endpoint/EndpointFactory.php
+@@ -226,18 +226,22 @@
+     protected function getAuthBearerToken()
+     {
+         $headers = getAllHeaders();
++        $headers = array_change_key_case($headers, CASE_LOWER);
++
++        $authorization = $headers['authorization'] ?? null;
++        if (!$authorization) {
++            $authorization = $_SERVER['HTTP_AUTHORIZATION']
++                ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
++                ?? null;
++        }
+ 
+-        $token = null;
+-        if (
+-            isset($headers['Authorization'])
+-            && strpos(
+-                $headers['Authorization'],
+-                'Bearer '
+-            ) === 0
++        if (
++            !is_string($authorization)
++            || stripos($authorization, 'Bearer ') !== 0
+         ) {
+-            $token = substr($headers['Authorization'], 7);
++            return null;
+         }
+ 
+-        return $token;
++        return substr($authorization, 7);
+     }
+ }
