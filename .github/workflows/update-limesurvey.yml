@@ -56,7 +56,7 @@ jobs:
                 build_date=$(date -u -d "-${day_offset} days" +%y%m%d)
                 candidate="${package_version}+${build_date}"
                 candidate_url="https://download.limesurvey.org/${download_directory}/limesurvey${candidate}.zip"
-                if curl --fail --location --silent --show-error --head "$candidate_url" >/dev/null; then
+                if curl --fail --location --silent --head "$candidate_url" >/dev/null; then
                   printf '%s\n' "$candidate"
                   return
                 fi
