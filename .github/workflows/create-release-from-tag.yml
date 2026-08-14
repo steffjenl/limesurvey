@@ -1,7 +1,9 @@
 on:
   push:
     tags:
-      - 'v*'
+      - 'v-master-*'
+      - 'v-stable-*'
+  workflow_dispatch:
 
 name: Create Release
 
@@ -9,37 +11,66 @@ jobs:
   build:
     name: Create Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}
         run: |
-          gh release create "$tag" \
-              --repo="$GITHUB_REPOSITORY" \
-              --title="${GITHUB_REPOSITORY#*/} ${tag#v}" \
-              --generate-notes
+          if ! gh release view "$tag" --repo="$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" \
+                --repo="$GITHUB_REPOSITORY" \
+                --title="${GITHUB_REPOSITORY#*/} ${tag#v}" \
+                --generate-notes
+          fi
   build_docker_images:
     # Job name that shows in the GitHub UI
     name: 'Build Docker Images'
     # Runner to use
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: 'Checkout'
         uses: actions/checkout@v4
 
       - name: 'Get the release version'
-        id: strip-branch-name
+        id: release
         run: |
-          release_version=$(echo "${{ github.ref_name }}")
-          docker_version=$(echo $release_version | sed 's/v//')
-          echo "Building release version $release_version"
-          echo "RELEASE_VERSION=$release_version" >> $GITHUB_ENV
-          echo "DOCKER_VERSION=$docker_version" >> $GITHUB_ENV
+          tag="${{ github.ref_name }}"
+          case "$tag" in
+            v-master-*)
+              version="${tag#v-master-}"
+              dockerfile="Dockerfile"
+              image_version="master-${version//+/-}"
+              floating_tags=$(printf '%s\n%s' 'ghcr.io/steffjenl/limesurvey:latest-master' 'ghcr.io/steffjenl/limesurvey:latest')
+              ;;
+            v-stable-*)
+              version="${tag#v-stable-}"
+              dockerfile="Dockerfile.stable"
+              image_version="stable-${version//+/-}"
+              floating_tags="ghcr.io/steffjenl/limesurvey:latest-stable"
+              ;;
+            *)
+              echo "Unsupported release tag: $tag" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "Building $tag from $dockerfile"
+          echo "dockerfile=$dockerfile" >> "$GITHUB_OUTPUT"
+          echo "image_version=$image_version" >> "$GITHUB_OUTPUT"
+          {
+            echo 'floating_tags<<EOF'
+            echo "$floating_tags"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: 'Login to GitHub Container Registry'
         uses: docker/login-action@v3
@@ -60,9 +91,9 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/steffjenl/limesurvey:cache
           cache-to: type=registry,ref=ghcr.io/steffjenl/limesurvey:cache,mode=max
           context: .
-          file: ./Dockerfile
+          file: ./${{ steps.release.outputs.dockerfile }}
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/steffjenl/limesurvey:${{env.RELEASE_VERSION}}
-            ghcr.io/steffjenl/limesurvey:latest
+            ghcr.io/steffjenl/limesurvey:${{ steps.release.outputs.image_version }}
+            ${{ steps.release.outputs.floating_tags }}

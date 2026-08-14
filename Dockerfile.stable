@@ -1,12 +1,12 @@
 FROM php:8.4-apache
 
-ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-master/limesurvey7.0.10+260813.zip
-ENV DOWNLOAD_SHA256=1df22ff8234fc4c100bdb5a110082731c019e8615840b7a27e25edcf130c89e3
+ENV DOWNLOAD_URL=https://download.limesurvey.org/latest-v6.x/limesurvey6.17.16+260814.zip
+ENV DOWNLOAD_SHA256=eaddc2371daa44b14567680baccf050d4c7e7b04e415f1a9ef269ca0cf78804f
 
 #Need sury repo for libc-client-dev
 RUN curl -sSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb \
     && dpkg -i /tmp/debsuryorg-archive-keyring.deb \
-    && echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ trixie main" > /etc/apt/sources.list.d/php.list 
+    && echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ trixie main" > /etc/apt/sources.list.d/php.list
 
 # install the PHP extensions we need
 RUN apt-get update && apt-get install -y unzip libc-client-dev libfreetype6-dev libmcrypt-dev libpng-dev libjpeg-dev libldap-common libldap2-dev zlib1g-dev libkrb5-dev libtidy-dev libzip-dev libsodium-dev libpq-dev libonig-dev netcat-openbsd && rm -rf /var/lib/apt/lists/* \
@@ -89,7 +89,6 @@ RUN { \
         echo 'error_log = /dev/stderr'; \
     } > /usr/local/etc/php/conf.d/limesurvey.ini
 
-
 #Accept remote ip from local proxies where X-Forwarded-For set
 RUN { \
         echo 'ProxyPreserveHost On'; \
@@ -107,7 +106,7 @@ VOLUME ["/var/lime/sessions"]
 VOLUME ["/var/www/html/application/config"]
 
 # temp patch for npm
-COPY fix-auth-header-master.patch /tmp/fix-auth-header.patch
+COPY fix-auth-header.patch /tmp/fix-auth-header.patch
 RUN patch -p1 < /tmp/fix-auth-header.patch
 
 COPY docker-entrypoint.sh /usr/local/bin/

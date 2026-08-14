@@ -1,0 +1,135 @@
+name: Update LimeSurvey
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: update-limesurvey
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Find, validate, and publish updates
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          open_issue() {
+            local title="$1"
+            local body="$2"
+            local existing
+            existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number')
+            if [[ -z "$existing" ]]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            fi
+          }
+
+          resolve_version() {
+            local download_directory="$1"
+            local upstream_branch="$2"
+            local major_version="$3"
+            local package_version build_date candidate candidate_url versions
+
+            package_version=$(curl --fail --location --retry 3 --silent --show-error "https://raw.githubusercontent.com/LimeSurvey/LimeSurvey/${upstream_branch}/application/config/version.php" | sed -n "s/.*\['versionnumber'\] = '\([0-9.]*\)'.*/\1/p" | head -n 1 || true)
+            if [[ "$package_version" =~ ^${major_version}\.[0-9]+\.[0-9]+$ ]]; then
+              for day_offset in {0..14}; do
+                build_date=$(date -u -d "-${day_offset} days" +%y%m%d)
+                candidate="${package_version}+${build_date}"
+                candidate_url="https://download.limesurvey.org/${download_directory}/limesurvey${candidate}.zip"
+                if curl --fail --location --silent --show-error --head "$candidate_url" >/dev/null; then
+                  printf '%s\n' "$candidate"
+                  return
+                fi
+              done
+            fi
+
+            versions=$(git ls-remote --tags --refs https://github.com/LimeSurvey/LimeSurvey.git "${major_version}.*" | sed 's#.*refs/tags/##' | grep -E "^${major_version}\\.[0-9]+\\.[0-9]+\\+[0-9]{6}$" || true)
+            printf '%s\n' "$versions" | sort -V | tail -n 1
+          }
+
+          update_channel() {
+            local channel="$1"
+            local dockerfile="$2"
+            local download_directory="$3"
+            local upstream_branch="$4"
+            local major_version="$5"
+            local patch_file="$6"
+            local version_regex="^${major_version}\\.[0-9]+\\.[0-9]+\\+[0-9]{6}$"
+            local versions latest_version current_version current_sha archive_url work_dir source_dir checksum release_tag newest
+
+            latest_version=$(resolve_version "$download_directory" "$upstream_branch" "$major_version")
+            if [[ -z "$latest_version" ]]; then
+              open_issue "LimeSurvey ${channel} update blocked" "No version matching \`${version_regex}\` was found in the upstream tags."
+              return
+            fi
+
+            current_version=$(sed -n 's|^ENV DOWNLOAD_URL=.*/limesurvey\([^/]*\)\.zip$|\1|p' "$dockerfile")
+            current_sha=$(sed -n 's/^ENV DOWNLOAD_SHA256=//p' "$dockerfile")
+            newest=$(printf '%s\n%s\n' "$current_version" "$latest_version" | sort -V | tail -n 1)
+            if [[ "$newest" != "$latest_version" ]]; then
+              echo "${channel}: upstream tag ${latest_version} is older than pinned ${current_version}; skipping"
+              return
+            fi
+
+            archive_url="https://download.limesurvey.org/${download_directory}/limesurvey${latest_version}.zip"
+            work_dir=$(mktemp -d)
+            if ! curl --fail --location --retry 3 --silent --show-error "$archive_url" --output "$work_dir/limesurvey.zip"; then
+              rm -rf "$work_dir"
+              open_issue "LimeSurvey ${channel} update blocked: ${latest_version}" "The official archive could not be downloaded: ${archive_url}"
+              return
+            fi
+
+            checksum=$(sha256sum "$work_dir/limesurvey.zip" | awk '{print $1}')
+            if [[ "$current_version" == "$latest_version" && "$current_sha" == "$checksum" ]]; then
+              echo "${channel}: already pinned to ${latest_version}"
+              rm -rf "$work_dir"
+              return
+            fi
+
+            unzip -q "$work_dir/limesurvey.zip" -d "$work_dir/unpacked"
+            source_dir=$(find "$work_dir/unpacked" -mindepth 1 -maxdepth 1 -type d -print -quit)
+            if ! patch --dry-run -d "$source_dir" -p1 < "$patch_file"; then
+              rm -rf "$work_dir"
+              open_issue "LimeSurvey ${channel} update blocked: ${latest_version}" "\`${patch_file}\` no longer applies to ${archive_url}. No source, tag, or image was updated."
+              return
+            fi
+            rm -rf "$work_dir"
+
+            sed -i -E "s|^ENV DOWNLOAD_URL=.*$|ENV DOWNLOAD_URL=${archive_url}|" "$dockerfile"
+            sed -i -E "s|^ENV DOWNLOAD_SHA256=.*$|ENV DOWNLOAD_SHA256=${checksum}|" "$dockerfile"
+            git add "$dockerfile"
+            git commit -m "chore: bump LimeSurvey ${channel} to ${latest_version}"
+
+            release_tag="v-${channel}-${latest_version}"
+            if git rev-parse -q --verify "refs/tags/${release_tag}" >/dev/null; then
+              open_issue "LimeSurvey ${channel} update blocked: ${latest_version}" "The release tag \`${release_tag}\` already exists, so the updated source was not pushed."
+              return
+            fi
+
+            git tag -a "$release_tag" -m "LimeSurvey ${channel} ${latest_version}"
+            git push origin main "$release_tag"
+            gh workflow run create-release-from-tag.yml --repo "$GITHUB_REPOSITORY" --ref "$release_tag"
+          }
+
+          update_channel master Dockerfile latest-master master 7 fix-auth-header-master.patch
+          update_channel stable Dockerfile.stable latest-v6.x v6.x 6 fix-auth-header.patch
