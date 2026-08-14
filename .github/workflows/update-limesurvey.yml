@@ -108,10 +108,12 @@ jobs:
 
             unzip -q "$work_dir/limesurvey.zip" -d "$work_dir/unpacked"
             source_dir=$(find "$work_dir/unpacked" -mindepth 1 -maxdepth 1 -type d -print -quit)
-            if ! patch --dry-run -d "$source_dir" -p1 < "$patch_file"; then
-              rm -rf "$work_dir"
-              open_issue "LimeSurvey ${channel} update blocked: ${latest_version}" "\`${patch_file}\` no longer applies to ${archive_url}. No source, tag, or image was updated."
-              return
+            if [[ -n "$patch_file" ]]; then
+              if ! patch --dry-run -d "$source_dir" -p1 < "$patch_file"; then
+                rm -rf "$work_dir"
+                open_issue "LimeSurvey ${channel} update blocked: ${latest_version}" "\`${patch_file}\` no longer applies to ${archive_url}. No source, tag, or image was updated."
+                return
+              fi
             fi
             rm -rf "$work_dir"
 
@@ -131,5 +133,5 @@ jobs:
             gh workflow run create-release-from-tag.yml --repo "$GITHUB_REPOSITORY" --ref "$release_tag"
           }
 
-          update_channel master Dockerfile latest-master master 7 fix-auth-header-master.patch
+          update_channel master Dockerfile latest-master master 7 ''
           update_channel stable Dockerfile.stable latest-v6.x v6.x 6 fix-auth-header.patch

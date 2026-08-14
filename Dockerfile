@@ -106,10 +106,6 @@ VOLUME ["/var/lime/sessions"]
 #ensure that the config is persisted especially for security.php
 VOLUME ["/var/www/html/application/config"]
 
-# temp patch for npm
-COPY fix-auth-header-master.patch /tmp/fix-auth-header.patch
-RUN patch -p1 < /tmp/fix-auth-header.patch
-
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
     && ln -s /usr/local/bin/docker-entrypoint.sh /entrypoint.sh # backwards compat
